@@ -411,7 +411,7 @@ var hexToASMFuncs = {
 	0xFE: ["INC", absoluteIndexedX],
 	0xFF: ["SBC", absoluteLongIndexedX]
 };
-_65816.disassemble = function(hex) {
+_65816.disassemble = function(hex, startAddress, labels) {
 	var length = hex.length;
 	var asm = "";
 	for (var i = 0; i < length; ++i) {
@@ -421,16 +421,28 @@ _65816.disassemble = function(hex) {
 		var mode = func[1];
 		var operandlength = mode.length;
 		var args = new Array(operandlength);
+		var operand = "";
 		for (var j = 0; j < operandlength; ++j) {
 			args[j] = hex[++i];
-			if (m && [0x69, 0x29, 0x89, 0xc9, 0x49, 0xa9, 0x09, 0xe9].indexOf(opcode) != -1) {
+			if (m && [0x69, 0x29, 0x89, 0xc9, 0x49, 0xa9, 0x09, 0xe9].indexOf(opcode) !== -1) {
 				args[++j] = 0;
 			}
-			if (x && [0xe0, 0xc0, 0xa2, 0xa0].indexOf(opcode) != -1) {
+			if (x && [0xe0, 0xc0, 0xa2, 0xa0].indexOf(opcode) !== -1) {
 				args[++j] = 0;
 			}
 		}
-		asm += mnemonic + " " + mode.apply(null, args) + "<br/>";
+		var currentAddress = startAddress + i;
+		if (mode === relative) {
+			operand = labels[(currentAddress + operandlength + args[0]) & 0xffff];
+		}
+		else if (mode === relativeLong) {
+			operand = labels[(currentAddress + operandlength + args[0] + (args[1] << 8)) & 0xffff];
+		}
+		else {
+			operand = mode.apply(null, args);
+		}
+		var label = labels && labels.hasOwnProperty((currentAddress - operandlength) & 0xffff) ? labels[(startAddress + i - operandlength) & 0xffff] + ":" : "\t";
+		asm += "$" + pad(currentAddress.toString(16)) + "\t" + label + "\t" + mnemonic + " " + operand + "\n";
 	}
 	return asm;
 };
