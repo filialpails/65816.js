@@ -28,20 +28,22 @@ function _65816(layout) {
 		mem = [0 for (x in range(0x000000, 0xffffff))];
 		break;
 	case "lorom":
-		for (var b = 0x00; b <= 0xff; ++b) {
-			for (var a = 0x8000; a <= 0xffff; ++a) {
-				mem[(b << 16) + a] = 0;
-			}
-		}
+		mem = [0 for (x in range(0x000000, 0xffffff)) if ((x & 0xffff) >= 0x8000)];
 		break;
 	}
 }
+
 _65816.prototype.run = function(code) {
 	var lines = code.split("\n");
+	
 };
 
+function hexbyte(n) {
+ return pad(n.toString(16));
+}
+
 function absolute(b1, b2) {
- return "$" + pad(b2.toString(16)) + pad(b1.toString(16));
+ return "$" + hexbyte(b2) + hexbyte(b1);
 }
 function absoluteIndexedX(b1, b2) {
  return absolute(b1, b2) + ",X";
@@ -56,14 +58,14 @@ function absoluteIndirect(b1, b2) {
  return "(" + absolute(b1, b2) + ")";
 }
 function immediate(b1, b2) {
- return "#$" + pad(b2.toString(16)) + pad(b1.toString(16));
+ return "#$" + hexbyte(b2) + hexbyte(b1);
 }
 function relative(b1) {
- if (b1 >> 7 === 1) b1 = ~b1 + 1;
+ if (b1 >> 7 === 1) b1 = -((~b1 + 1) & 0xff);
  return b1;
 }
 function direct(b1) {
- return "$" + pad(b1.toString(16));
+ return "$" + hexbyte(b1);
 }
 function directIndexedY(b1) {
  return direct(b1) + ",Y";
@@ -81,7 +83,7 @@ function absoluteIndirectLong(b1, b2) {
  return "[" + absolute(b1, b2) + "]";
 }
 function absoluteLong(b1, b2, b3) {
- return "$" + pad(b3.toString(16)) + pad(b2.toString(16)) + pad(b1.toString(16));
+ return "$" + hexbyte(b3) + hexbyte(b2) + hexbyte(b1);
 }
 function absoluteLongIndexedX(b1, b2, b3) {
  return absoluteLong(b1, b2, b3) + ",X";
@@ -100,11 +102,11 @@ function directIndirectLongIndexedY(b1) {
 }
 function relativeLong(b1, b2) {
  var num = (b2 << 8) + b1;
- if (num >> 15 === 1) num = ~num + 1;
+ if (num >> 15 === 1) num = -((~num + 1) & 0xffff)
  return num;
 }
 function stackRelative(b1) {
- return pad(b1.toString(16)) + ",S";
+ return hexbyte(b1) + ",S";
 }
 function stackRelativeIndirectIndexedY(b1) {
  return "(" + stackRelative(b1) + "),Y";
@@ -145,7 +147,7 @@ function stackDirectIndirect(b1) {
 
 var m = true;
 var x = true;
-var hexToASMFuncs = {
+var hexToASM = {
 	0x00: ["BRK", stackInterrupt],
 	0x01: ["ORA", directIndexedIndirectX],
 	0x02: ["COP", stackInterrupt],
@@ -411,38 +413,52 @@ var hexToASMFuncs = {
 	0xFE: ["INC", absoluteIndexedX],
 	0xFF: ["SBC", absoluteLongIndexedX]
 };
+
+var ASMtoHex = (function() {
+	var ret = {};
+	for (var i = 0x00; i < 0xFF; ++i) {
+		var opcode = hexToASM[i];
+		ret[opcode[0]] = [i, opcode[1]];
+	}
+	return ret;
+})();
+
 _65816.disassemble = function(hex, startAddress, labels) {
 	var length = hex.length;
 	var asm = "";
 	for (var i = 0; i < length; ++i) {
 		var opcode = hex[i];
-		var func = hexToASMFuncs[opcode];
+		var func = hexToASM[opcode];
 		var mnemonic = func[0];
 		var mode = func[1];
 		var operandlength = mode.length;
 		var args = new Array(operandlength);
 		var operand = "";
+		var currentAddress = startAddress + i;
 		for (var j = 0; j < operandlength; ++j) {
 			args[j] = hex[++i];
 			if (m && [0x69, 0x29, 0x89, 0xc9, 0x49, 0xa9, 0x09, 0xe9].indexOf(opcode) !== -1) {
 				args[++j] = 0;
+				--operandlength;
 			}
-			if (x && [0xe0, 0xc0, 0xa2, 0xa0].indexOf(opcode) !== -1) {
+			else if (x && [0xe0, 0xc0, 0xa2, 0xa0].indexOf(opcode) !== -1) {
 				args[++j] = 0;
+				--operandlength;
 			}
 		}
-		var currentAddress = startAddress + i;
 		if (mode === relative) {
-			operand = labels[(currentAddress + operandlength + args[0]) & 0xffff];
+			var rel = mode.apply(null, args);
+			operand = labels[(currentAddress + operandlength + 1 + rel) & 0xffff];
 		}
 		else if (mode === relativeLong) {
-			operand = labels[(currentAddress + operandlength + args[0] + (args[1] << 8)) & 0xffff];
+			var rel = mode.apply(null, args);
+			operand = labels[(currentAddress + operandlength + 1 + rel) & 0xffff];
 		}
 		else {
 			operand = mode.apply(null, args);
 		}
-		var label = labels && labels.hasOwnProperty((currentAddress - operandlength) & 0xffff) ? labels[(startAddress + i - operandlength) & 0xffff] + ":" : "\t";
-		asm += "$" + pad(currentAddress.toString(16)) + "\t" + label + "\t" + mnemonic + " " + operand + "\n";
+		var label = labels && labels.hasOwnProperty(currentAddress & 0xffff) ? labels[currentAddress & 0xffff] + ":" : "\t";
+		asm += "$" + pad(currentAddress.toString(16), 6) + "\t" + label + "\t" + mnemonic + " " + operand + "\n";
 	}
 	return asm;
 };
