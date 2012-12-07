@@ -34,16 +34,29 @@ function _65816(layout) {
 }
 
 _65816.prototype.run = function(code) {
-	var lines = code.split("\n");
 	
+	var lines = code.split("\n");
+	var linecount = lines.length;
+	for (var lineno = 0; lineno < linecount; ++i) {
+		var line = lines[lineno];
+		[mnemonic, operand] = line.split(' ');
+		var opcode = ASMtoHex[mnemonic][operand];
+	}
 };
 
 function hexbyte(n) {
  return pad(n.toString(16));
 }
 
+var bank = "";
+
 function absolute(b1, b2) {
- return "$" + hexbyte(b2) + hexbyte(b1);
+ var address = "$" + hexbyte(b2) + hexbyte(b1);
+ var name = _65816.named_memory_locations[bank][(b2 << 8) + b1];
+ if (name) {
+  return ('<span title="' + address + '">' + name + '</span>');
+ }
+ return address;
 }
 function absoluteIndexedX(b1, b2) {
  return absolute(b1, b2) + ",X";
@@ -65,7 +78,12 @@ function relative(b1) {
  return b1;
 }
 function direct(b1) {
- return "$" + hexbyte(b1);
+ var address = "$" + hexbyte(b1);
+ var name = _65816.named_memory_locations["directpage"][b1];
+ if (name) {
+  return ('<span title="' + address + '">' + name + '</span>');
+ }
+ return address;
 }
 function directIndexedY(b1) {
  return direct(b1) + ",Y";
@@ -414,11 +432,16 @@ var hexToASM = {
 	0xFF: ["SBC", absoluteLongIndexedX]
 };
 
+_65816.named_memory_locations = { "programbank": [], "databank": [], "directpage": [] };
+
 var ASMtoHex = (function() {
 	var ret = {};
 	for (var i = 0x00; i < 0xFF; ++i) {
 		var opcode = hexToASM[i];
-		ret[opcode[0]] = [i, opcode[1]];
+		var mnemonic = opcode[0];
+		var mode = opcode[1];
+		if (typeof ret[mnemonic] === 'undefined') ret[mnemonic] = {};
+		ret[mnemonic][mode] = i;
 	}
 	return ret;
 })();
@@ -431,6 +454,7 @@ _65816.disassemble = function(hex, startAddress, labels) {
 		var func = hexToASM[opcode];
 		var mnemonic = func[0];
 		var mode = func[1];
+		bank = ["JMP", "JSR"].indexOf(mnemonic) !== -1 ? "programbank" : "databank";
 		var operandlength = mode.length;
 		var args = new Array(operandlength);
 		var operand = "";
@@ -446,15 +470,16 @@ _65816.disassemble = function(hex, startAddress, labels) {
 				--operandlength;
 			}
 		}
-		if (mode === relative) {
+		switch (mode) {
+		case relative:
 			var rel = mode.apply(null, args);
 			operand = labels[(currentAddress + operandlength + 1 + rel) & 0xffff];
-		}
-		else if (mode === relativeLong) {
+			break;
+		case relativeLong:
 			var rel = mode.apply(null, args);
 			operand = labels[(currentAddress + operandlength + 1 + rel) & 0xffff];
-		}
-		else {
+			break;
+		default:
 			operand = mode.apply(null, args);
 		}
 		var label = labels && labels.hasOwnProperty(currentAddress & 0xffff) ? labels[currentAddress & 0xffff] + ":" : "\t";
