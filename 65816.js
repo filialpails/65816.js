@@ -25,10 +25,15 @@ function _65816(layout) {
 	var mem = [];
 	switch (layout) {
 	case "hirom":
-		mem = [0 for (x in range(0x000000, 0xffffff))];
+		for (var i = 0x000000; i <= 0xffffff; ++i) {
+			mem[mem.length] = i;
+		}
 		break;
 	case "lorom":
-		mem = [0 for (x in range(0x000000, 0xffffff)) if ((x & 0xffff) >= 0x8000)];
+		for (var i = 0x000000; i <= 0xffffff; ++i) {
+			if ((x & 0xffff) >= 0x8000)
+			mem[mem.length] = i;
+		}
 		break;
 	}
 }
