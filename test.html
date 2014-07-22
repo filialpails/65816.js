@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>65816.js test</title>
+  </head>
+  <body>
+    <label for="disasm">Disassembly: </label>
+    <textarea id="disasm" rows="20" cols="42"></textarea>
+    <p id="disasmPass"></p>
+    <script src="65816.js"></script>
+    <script>
+     (function () {
+       'use strict';
+       var hex = [
+         0x78,             // SEI
+         0x18,             // CLC
+         0xfb,             // XCE
+         0xd8,             // CLD
+         0xc2, 0x10,       // REP #%00010000
+         0xe2, 0x20,       // SEP #%00100000
+         0xa2, 0xff, 0x1f, // LDX #$1FFF
+         0x9a              // TXS
+       ];
+       var labels = { 0x000000: 'RESET' },
+           disasm = document.getElementById('disasm'),
+           disasmPass = document.getElementById('disasmPass');
+           disasm.value = new _65816(hex, 0x000000, labels).disassemble();
+           disasmPass.textContent = disasm.value === "$000000 RESET: SEI\n\
+$000001        CLC\n\
+$000002        XCE\n\
+$000003        CLD\n\
+$000004        REP #%00010000\n\
+$000006        SEP #%00100000\n\
+$000008        LDX #$1fff\n\
+$00000b        TXS\n" ? 'PASS' : 'FAIL';
+     }());
+    </script>
+  </body>
+</html>
